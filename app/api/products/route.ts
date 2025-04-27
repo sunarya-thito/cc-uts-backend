@@ -3,6 +3,7 @@ import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 import { v4 as uuidv4 } from "uuid"
 import { db } from "@/lib/db"
+import { RowDataPacket } from "mysql2"
 
 // Initialize the S3 client
 const s3Client = new S3Client({
@@ -20,21 +21,21 @@ async function generateImageUrl(key: string) {
 // GET /api/products
 export async function GET() {
   try {
-    const result = await db.query(`
+    const [result] = await db.query<RowDataPacket[]>(`
       SELECT 
-        id::text, 
+        id, 
         name, 
         price, 
         image_key as "imageKey", 
         date_added as "dateAdded", 
         date_updated as "dateUpdated" 
-      FROM products 
+      FROM products
       ORDER BY date_added DESC
     `)
 
     // Generate presigned URLs for all product images
     const products = await Promise.all(
-      result.rows.map(async (product) => {
+      result.map(async (product) => {
         if (product.imageKey) {
           const url = await generateImageUrl(product.imageKey)
           return {
@@ -100,27 +101,31 @@ export async function POST(request: Request) {
     }
 
     // Insert the product into the database
-    const result = await db.query(
+    await db.query<RowDataPacket[]>(
       `
       INSERT INTO products (name, price, image_key, date_added, date_updated)
-      VALUES ($1, $2, $3, NOW(), NOW())
-      RETURNING 
-        id::text, 
-        name, 
-        price, 
-        image_key as "imageKey", 
-        date_added as "dateAdded", 
-        date_updated as "dateUpdated"
+      VALUES (?, ?, ?, NOW(), NOW())
       `,
       [name, price, imageKey],
     )
 
-    const newProduct = result.rows[0]
+    const [result] = await db.query<RowDataPacket[]>(
+      'SELECT LAST_INSERT_ID() as id'
+    )
+    if (result.length === 0) {
+      return NextResponse.json({ message: "Failed to retrieve product ID" }, { status: 500 })
+    }
+
 
     // Return the product with the presigned URL
     return NextResponse.json(
       {
-        ...newProduct,
+        id: result[0].id,
+        name,
+        price,
+        imageKey,
+        dateAdded: new Date().toISOString(),
+        dateUpdated: new Date().toISOString(),
         image: s3ImageUrl,
       },
       { status: 201 },

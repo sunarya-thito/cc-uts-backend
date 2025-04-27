@@ -11,13 +11,12 @@
   "dependencies": {
     "@aws-sdk/client-s3": "latest",
     "@aws-sdk/s3-request-presigner": "latest",
+    "mysql2": "^3.14.1",
     "next": "15.2.4",
-    "pg": "^8.15.6",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@types/node": "^22",
-    "@types/pg": "^8.11.14",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "postcss": "^8",

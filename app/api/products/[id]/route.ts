@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3"
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 import { v4 as uuidv4 } from "uuid"
 import { db } from "@/lib/db"
+import { RowDataPacket } from "mysql2/promise"
 
 // Initialize the S3 client
 const s3Client = new S3Client({
@@ -21,26 +21,26 @@ async function generateImageUrl(key: string) {
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const id = (await params).id
   try {
-    const result = await db.query(
+    const [result] = await db.query<RowDataPacket[]>(
       `
       SELECT 
-        id::text, 
+        id, 
         name, 
         price, 
         image_key as "imageKey", 
         date_added as "dateAdded", 
         date_updated as "dateUpdated" 
       FROM products 
-      WHERE id = $1
+      WHERE id = ?
       `,
       [id],
     )
 
-    if (result.rows.length === 0) {
+    if (result.length === 0) {
       return NextResponse.json({ message: "Product not found" }, { status: 404 })
     }
 
-    const product = result.rows[0]
+    const product = result[0]
 
     // Generate a presigned URL for the product image
     if (product.imageKey) {
@@ -71,13 +71,13 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     // Get the current product to check if we need to delete an old image
-    const currentProduct = await db.query('SELECT image_key as "imageKey" FROM products WHERE id = $1', [id])
+    const [currentProduct] = await db.query<RowDataPacket[]>('SELECT image_key as "imageKey" FROM products WHERE id = ?', [id])
 
-    if (currentProduct.rows.length === 0) {
+    if (currentProduct.length === 0) {
       return NextResponse.json({ message: "Product not found" }, { status: 404 })
     }
 
-    let imageKey = currentProduct.rows[0].imageKey
+    let imageKey = currentProduct[0].imageKey
     let s3ImageUrl: string | null = null
 
     // Handle image upload if a file was provided
@@ -127,27 +127,23 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     // Update the product in the database
-    const result = await db.query(
+    await db.query(
       `
       UPDATE products 
-      SET name = $1, price = $2, image_key = $3, date_updated = NOW()
-      WHERE id = $4
-      RETURNING 
-        id::text, 
-        name, 
-        price, 
-        image_key as "imageKey", 
-        date_added as "dateAdded", 
-        date_updated as "dateUpdated"
+      SET name = ?, price = ?, image_key = ?, date_updated = NOW()
+      WHERE id = ?
       `,
       [name, price, imageKey, id],
     )
 
-    const updatedProduct = result.rows[0]
-
     // Return the product with the presigned URL
     return NextResponse.json({
-      ...updatedProduct,
+      id,
+      name,
+      price,
+      imageKey,
+      dateAdded: new Date().toISOString(),
+      dateUpdated: new Date().toISOString(),
       image: s3ImageUrl
     })
   } catch (error) {
@@ -161,17 +157,17 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const id = (await params).id
   try {
     // Get the product image key before deleting
-    const product = await db.query('SELECT image_key as "imageKey" FROM products WHERE id = $1', [id])
+    const [product] = await db.query<RowDataPacket[]>('SELECT image_key as "imageKey" FROM products WHERE id = ?', [id])
 
-    if (product.rows.length === 0) {
+    if (product.length === 0) {
       return NextResponse.json({ message: "Product not found" }, { status: 404 })
     }
 
     // Delete the product from the database
-    await db.query("DELETE FROM products WHERE id = $1", [id])
+    await db.query("DELETE FROM products WHERE id = ?", [id])
 
     // Delete the image from S3 if it exists
-    const imageKey = product.rows[0].imageKey
+    const imageKey = product[0].imageKey
     if (imageKey) {
       try {
         const deleteCommand = new DeleteObjectCommand({
