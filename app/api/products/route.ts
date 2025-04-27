@@ -86,7 +86,7 @@ export async function POST(request: Request) {
         Key: imageKey,
         Body: buffer,
         ContentType: imageFile.type,
-        ACL: "public-read",
+        // ACL: "public-read",
       })
 
       await s3Client.send(putCommand)

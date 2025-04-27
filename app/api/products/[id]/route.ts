@@ -94,7 +94,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         Key: newImageKey,
         Body: buffer,
         ContentType: imageFile.type,
-        ACL: "public-read",
+        // ACL: "public-read",
       })
 
       await s3Client.send(putCommand)
