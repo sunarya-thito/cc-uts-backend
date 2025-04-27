@@ -13,14 +13,8 @@ const s3Client = new S3Client({
   },
 })
 
-// Helper function to generate a presigned URL for an S3 object
-async function generatePresignedUrl(key: string, expiresIn = 3600) {
-  const command = new GetObjectCommand({
-    Bucket: process.env.AWS_S3_BUCKET_NAME!,
-    Key: key,
-  })
-
-  return getSignedUrl(s3Client, command, { expiresIn })
+async function generateImageUrl(key: string) {
+  return `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`
 }
 
 // GET /api/products/[id]
@@ -50,8 +44,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     // Generate a presigned URL for the product image
     if (product.imageKey) {
-      const presignedUrl = await generatePresignedUrl(product.imageKey)
-      product.image = presignedUrl
+      product.image = await generateImageUrl(product.imageKey)
     }
 
     return NextResponse.json(product)
@@ -85,7 +78,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     let imageKey = currentProduct.rows[0].imageKey
-    let presignedUrl: string | null = null
+    let s3ImageUrl: string | null = null
 
     // Handle image upload if a file was provided
     if (imageFile) {
@@ -101,7 +94,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         Key: newImageKey,
         Body: buffer,
         ContentType: imageFile.type,
-        // No ACL: "public-read" - keeping the object private
+        ACL: "public-read",
       })
 
       await s3Client.send(putCommand)
@@ -125,14 +118,12 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       imageKey = newImageKey
 
       // Generate a presigned URL for the new image
-      presignedUrl = await generatePresignedUrl(imageKey)
+      s3ImageUrl = await generateImageUrl(newImageKey)
     } else if (imageUrl) {
-      // For external URLs, we don't need to generate a presigned URL
-      presignedUrl = imageUrl
+      s3ImageUrl = imageUrl
       imageKey = null // Clear the S3 key since we're using an external URL
     } else if (imageKey) {
-      // Keep the existing image and generate a new presigned URL
-      presignedUrl = await generatePresignedUrl(imageKey)
+      s3ImageUrl = await generateImageUrl(imageKey)
     }
 
     // Update the product in the database
@@ -157,7 +148,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     // Return the product with the presigned URL
     return NextResponse.json({
       ...updatedProduct,
-      image: presignedUrl,
+      image: s3ImageUrl
     })
   } catch (error) {
     console.error(`Error updating product with ID ${id}:`, error)

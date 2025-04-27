@@ -13,14 +13,8 @@ const s3Client = new S3Client({
   },
 })
 
-// Helper function to generate a presigned URL for an S3 object
-async function generatePresignedUrl(key: string, expiresIn = 3600) {
-  const command = new GetObjectCommand({
-    Bucket: process.env.AWS_S3_BUCKET_NAME!,
-    Key: key,
-  })
-
-  return getSignedUrl(s3Client, command, { expiresIn })
+async function generateImageUrl(key: string) {
+  return `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`
 }
 
 // GET /api/products
@@ -42,10 +36,10 @@ export async function GET() {
     const products = await Promise.all(
       result.rows.map(async (product) => {
         if (product.imageKey) {
-          const presignedUrl = await generatePresignedUrl(product.imageKey)
+          const url = await generateImageUrl(product.imageKey)
           return {
             ...product,
-            image: presignedUrl,
+            image: url,
           }
         }
         return product
@@ -75,7 +69,7 @@ export async function POST(request: Request) {
     }
 
     let imageKey: string | null = null
-    let presignedUrl: string | null = null
+    let s3ImageUrl: string | null = null
 
     // Handle image upload if a file was provided
     if (imageFile) {
@@ -91,16 +85,16 @@ export async function POST(request: Request) {
         Key: imageKey,
         Body: buffer,
         ContentType: imageFile.type,
-        // No ACL: "public-read" - keeping the object private
+        ACL: "public-read",
       })
 
       await s3Client.send(putCommand)
 
       // Generate a presigned URL for the uploaded image
-      presignedUrl = await generatePresignedUrl(imageKey)
+      s3ImageUrl = await generateImageUrl(imageKey)
     } else if (imageUrl) {
       // For external URLs, we don't need to generate a presigned URL
-      presignedUrl = imageUrl
+      s3ImageUrl = imageUrl
     } else {
       return NextResponse.json({ message: "Image is required" }, { status: 400 })
     }
@@ -127,7 +121,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ...newProduct,
-        image: presignedUrl,
+        image: s3ImageUrl,
       },
       { status: 201 },
     )
