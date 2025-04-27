@@ -18,17 +18,21 @@ jobs:
         ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
     - name: Deploy to ECS
       run: |
-        ssh -o StrictHostKeyChecking=no $EC2_USER@$EC2_INSTANCE_IP << 'EOF'
-          cd latihan-uts-cloud-computing
-          sudo git pull origin master
-          sudo npm install --force
-          sudo npm run build
-          pm2 delete nextjs
-          pm2 start npm --name "nextjs" -- start
-          pm2 save
-          sudo systemctl restart nginx
+        ssh -o StrictHostKeyChecking=no -A $EC2_USER@$EC2_INSTANCE_IP << 'EOF'
+          ssh $EC2_USER_BACKEND@$EC2_INSTANCE_BACKEND_IP -o StrictHostKeyChecking=no << 'EOF'
+            cd cc-uts-backend
+            sudo git pull origin master
+            npm install
+            npm run build
+            pm2 delete nextjs
+            pm2 start npm --name "nextjs" -- start
+            pm2 save
+            sudo systemctl restart nginx
+          EOF
         EOF
       env:
         SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         EC2_INSTANCE_IP: ${{ secrets.EC2_INSTANCE_IP }}
         EC2_USER: ${{ secrets.EC2_USER }}
+        EC2_INSTANCE_BACKEND_IP: ${{ secrets.EC2_INSTANCE_BACKEND_IP }}
+        EC2_USER_BACKEND: ${{ secrets.EC2_USER_BACKEND }}
