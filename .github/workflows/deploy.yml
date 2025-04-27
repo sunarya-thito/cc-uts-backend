@@ -18,8 +18,8 @@ jobs:
         ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
     - name: Deploy to ECS
       run: |
-        ssh -o StrictHostKeyChecking=no -A $EC2_USER@$EC2_INSTANCE_IP << 'EOF'
-          ssh $EC2_USER_BACKEND@$EC2_INSTANCE_BACKEND_IP -o StrictHostKeyChecking=no << 'EOF'
+        ssh -o StrictHostKeyChecking=no -A $EC2_USER@$EC2_INSTANCE_IP "
+          ssh $EC2_USER_BACKEND@$EC2_INSTANCE_BACKEND_IP -o StrictHostKeyChecking=no '
             cd cc-uts-backend
             sudo git pull origin master
             npm install
@@ -28,8 +28,8 @@ jobs:
             pm2 start npm --name "nextjs" -- start
             pm2 save
             sudo systemctl restart nginx
-          EOF
-        EOF
+          '
+        "
       env:
         SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         EC2_INSTANCE_IP: ${{ secrets.EC2_INSTANCE_IP }}
